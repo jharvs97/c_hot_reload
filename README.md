@@ -1,1 +1,1 @@
-# Minimaal code hot reloading in C and Win32
+# Minimal code hot reloading in C and Win32
