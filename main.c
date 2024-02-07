@@ -4,57 +4,69 @@
 #include <stdint.h>
 
 typedef void* RunFunc();
-static RunFunc* Run = 0;
+
+typedef struct game_code game_code;
+
+struct game_code
+{
+    HMODULE GameDLL;
+    uint64_t LastGameDLLWriteTime;
+    RunFunc* Run;
+};
 
 uint64_t GetFileLastWriteTime(const char* FileName)
 {
     FILETIME Result = {0};
     WIN32_FILE_ATTRIBUTE_DATA Data;
     
-    if(GetFileAttributesExA("game.dll", GetFileExInfoStandard, &Data)) {
+    if(GetFileAttributesExA("game.dll", GetFileExInfoStandard, &Data))
+    {
         Result = Data.ftLastWriteTime;
     }
     
     return (uint64_t) (Result.dwLowDateTime | (Result.dwHighDateTime << 31));
 }
 
-HMODULE LoadGameCode()
+game_code LoadGameCode()
 {
+    game_code GameCode = {0};
+    
     WIN32_FILE_ATTRIBUTE_DATA Data;
     if (!GetFileAttributesExA("lock.temp", GetFileExInfoStandard, &Data))
     {
-        for (int i = 0; i < 10; i++) {
+        GameCode.LastGameDLLWriteTime = GetFileLastWriteTime("game.dll");
+        
+        for (int i = 0; i < 10; i++) 
+        {
             if (CopyFile("game.dll", "game.temp.dll", 0))
                 break;
         }
     }
     
-    HMODULE GameDLL = LoadLibraryA("game.temp.dll");
-    Run = (RunFunc*)GetProcAddress(GameDLL, "Run");
-    return GameDLL;
+    GameCode.GameDLL = LoadLibraryA("game.temp.dll");
+    GameCode.Run = (RunFunc*)GetProcAddress(GameCode.GameDLL, "Run");
+    
+    return GameCode;
 }
 
 int main(int ArgCount, char** Args)
 {
-    uint64_t LastWriteTime = GetFileLastWriteTime("game.dll");
-    HMODULE GameDLL = LoadGameCode();
+    game_code GameCode = LoadGameCode();
     
     while (1)
     {
         uint64_t CurrentWriteTime = GetFileLastWriteTime("game.dll");
         
-        if (CurrentWriteTime > LastWriteTime)
+        if (CurrentWriteTime > GameCode.LastGameDLLWriteTime)
         {
-            if (GameDLL)
-                FreeLibrary(GameDLL);
+            if (GameCode.GameDLL)
+                FreeLibrary(GameCode.GameDLL);
             
-            GameDLL = LoadGameCode();
-            LastWriteTime = CurrentWriteTime;
+            GameCode = LoadGameCode();
         }
         
-        Run();
+        GameCode.Run();
     }
-    
     
     return 0;
 }
